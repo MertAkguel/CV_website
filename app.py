@@ -1,15 +1,31 @@
 import streamlit as st
+import random
 import numpy as np
 import cv2
 import os
-from ultralytics import YOLO, SAM
+from ultralytics import YOLO, SAM, NAS
 from PIL import Image
 from stqdm import stqdm
 from help_functions import create_video_writer
 
 
+def prepare_classes(model):
+    yolo_classes = list(model.names.values())
+    classes = st.sidebar.multiselect(
+        'Select your classes',
+        ['All'] + sorted(yolo_classes),
+        ['All'])
+
+    if 'All' not in classes:
+        classes_ids = [yolo_classes.index(clas) for clas in classes]
+    else:
+        classes_ids = [yolo_classes.index(clas) for clas in yolo_classes]
+
+    return classes_ids
+
+
 def predict(chosen_model, img, classes, conf=0.5):
-    if classes != ["All"]:
+    if classes:
         results = chosen_model.predict(img, classes=classes, conf=conf)
     else:
         results = chosen_model.predict(img, conf=conf)
@@ -32,14 +48,14 @@ def predict_and_detect(chosen_model, img, classes, conf=0.5):
 
 def predict_and_segment(chosen_model, img, classes, conf=0.5):
     results = predict(chosen_model, img, classes, conf=conf)
-
-    colors = [np.random.randint(0, 255, size=(3,)) for _ in classes]
+    colors = [random.choices(range(256), k=3) for _ in classes]
 
     for result in results:
-        for mask in result.masks.xy:
+        for mask, box in zip(result.masks.xy, result.boxes):
             points = np.int32([mask])
             # cv2.polylines(img, points, True, (255, 0, 0), 1)
-            cv2.fillPoly(img, points, colors)
+            color_number = classes.index(int(box.cls[0]))
+            cv2.fillPoly(img, points, colors[color_number])
 
     return img, results
 
@@ -67,7 +83,7 @@ def handle_image(chosen_model, classes, task, conf=0.5):
         # st.download_button("Download output", new_img)
 
 
-def handle_video(chosen_model, classes, conf=0.5):
+def handle_video(chosen_model, classes, task, conf=0.5):
     uploaded_file = st.file_uploader("Choose a video...", type=["mp4", "avi"])
 
     input_video, output_video = st.columns(2)
@@ -108,7 +124,10 @@ def handle_video(chosen_model, classes, conf=0.5):
                         print("success")
                         break
 
-                    result_img, _ = predict_and_detect(chosen_model, image, conf)
+                    if task == "detect":
+                        result_img, _ = predict_and_detect(chosen_model, image, classes, conf)
+                    elif task == "segment":
+                        result_img, _ = predict_and_segment(chosen_model, image, classes, conf)
                     writer.write(result_img)
 
                 cap.release()
@@ -118,7 +137,7 @@ def handle_video(chosen_model, classes, conf=0.5):
                 st.video(video_bytes)
 
 
-def handle_webcam(chosen_model, classes, conf=0.5):
+def handle_webcam(chosen_model, classes, task, conf=0.5):
     st.header("kommt noch Bruder")
 
 
@@ -139,30 +158,23 @@ def object_detection_page(model_path):
     confidence = st.sidebar.slider("Confidence", 0.0, 1.0, 0.01)
     model_select = st.sidebar.radio("Choose your Model", ["YOLO", "YOLO-NAS"])
     if model_select == "YOLO":
-        version = st.sidebar.radio("Choose your version",
-                                   ["yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"])
+        version = st.sidebar.selectbox("Choose your version",
+                                       ["yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"])
         model = YOLO(os.path.join(model_path, version + ".pt"))
+        classes_ids = prepare_classes(model)
 
-        yolo_classes = list(model.names.values())
-        classes = st.sidebar.multiselect(
-            'Select your classes',
-            ['All'] + sorted(yolo_classes),
-            ['All'])
-        print(classes)
-        if ['All'] not in classes:
-            classes_ids = [yolo_classes.index(clas) for clas in classes]
-        print(classes_ids)
     elif model_select == "YOLO-NAS":
-        version = st.sidebar.radio("Choose your version",
-                                   ["yolo_nas_s", "yolo_nas_m", "yolo_nas_l"])
-        model = YOLO(os.path.join(model_path, version + ".pt"))
+        version = st.sidebar.selectbox("Choose your version",
+                                       ["yolo_nas_s", "yolo_nas_m", "yolo_nas_l"])
+        model = NAS(os.path.join(model_path, version + ".pt"))
+        classes_ids = prepare_classes(model)
 
     if medium == "Image":
         handle_image(model, classes_ids, task, confidence)
     elif medium == "Video":
-        handle_video(model, classes_ids, confidence)
+        handle_video(model, classes_ids, task, confidence)
     elif medium == "Webcam":
-        handle_webcam(model, classes_ids, confidence)
+        handle_webcam(model, classes_ids, task, confidence)
 
 
 def segmentation_page(model_path):
@@ -179,28 +191,22 @@ def segmentation_page(model_path):
     if model_select == "YOLO":
         version = st.sidebar.selectbox("Choose your version",
                                        ["yolov8n-seg", "yolov8s-seg", "yolov8m-seg", "yolov8l-seg", "yolov8x-seg"])
-        model = YOLO(os.path.join(model_path, version + ".pt"))
 
-        yolo_classes = list(model.names.values())
-        classes = st.sidebar.multiselect(
-            'Select your classes',
-            ['All'] + sorted(yolo_classes),
-            ['All'])
-        print(classes)
-        if ['All'] not in classes:
-            classes_ids = [yolo_classes.index(clas) for clas in classes]
-        print(classes_ids)
-    elif model_select == "SAM":
-        version = st.sidebar.radio("Choose your version",
-                                   ["yolo_nas_s", "yolo_nas_m", "yolo_nas_l"])
         model = YOLO(os.path.join(model_path, version + ".pt"))
+        classes_ids = prepare_classes(model)
+
+    elif model_select == "SAM":
+        version = st.sidebar.selectbox("Choose your version",
+                                       ['sam_h', 'sam_l', 'sam_b', 'mobile_sam'])
+        model = SAM(os.path.join(model_path, version + ".pt"))
+        classes_ids = prepare_classes(model)
 
     if medium == "Image":
         handle_image(model, classes_ids, task, confidence)
     elif medium == "Video":
-        handle_video(model, classes_ids, confidence)
+        handle_video(model, classes_ids, task, confidence)
     elif medium == "Webcam":
-        handle_webcam(model, classes_ids, confidence)
+        handle_webcam(model, classes_ids, task, confidence)
 
 
 def main():
