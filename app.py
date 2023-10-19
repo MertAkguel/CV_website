@@ -3,10 +3,12 @@ import random
 import numpy as np
 import cv2
 import os
-from ultralytics import YOLO, SAM, NAS
+from ultralytics import YOLO, SAM
 from PIL import Image
 from stqdm import stqdm
+from torch import cuda
 from help_functions import create_video_writer
+from super_gradients.training import models
 
 
 def prepare_classes(model):
@@ -60,30 +62,38 @@ def predict_and_segment(chosen_model, img, classes, conf=0.5):
     return img, results
 
 
-def handle_image(chosen_model, classes, task, conf=0.5):
+def handle_image(chosen_model, classes, task, package, conf=0.5):
     uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg"])
 
     input_image, output_image = st.columns(2)
 
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        new_img = np.array(image.convert('RGB'))
+        new_img = image.convert('RGB')
         with input_image:
             st.subheader("Your input Image")
             st.image(image, use_column_width=True)
 
         with output_image:
             st.subheader("Your output image")
-            if task == "detect":
-                result_img, _ = predict_and_detect(chosen_model, new_img, classes, conf)
-            elif task == "segment":
-                result_img, _ = predict_and_segment(chosen_model, new_img, classes, conf)
-            st.image(result_img, use_column_width=True)
+
+            if package == "ultralytics":
+                if task == "detect":
+                    result_img, _ = predict_and_detect(chosen_model, new_img, classes, conf)
+                elif task == "segment":
+                    result_img, _ = predict_and_segment(chosen_model, new_img, classes, conf)
+                st.image(result_img, use_column_width=True)
+
+            elif package == "super_gradients":
+
+                chosen_model.predict(new_img, conf=conf).save("images")
+                result_img = cv2.imread(os.path.join("images", os.listdir("images")[0]))
+                st.image(result_img, use_column_width=True)
 
         # st.download_button("Download output", new_img)
 
 
-def handle_video(chosen_model, classes, task, conf=0.5):
+def handle_video(chosen_model, classes, task, package, conf=0.5):
     uploaded_file = st.file_uploader("Choose a video...", type=["mp4", "avi"])
 
     input_video, output_video = st.columns(2)
@@ -124,10 +134,17 @@ def handle_video(chosen_model, classes, task, conf=0.5):
                         print("success")
                         break
 
-                    if task == "detect":
-                        result_img, _ = predict_and_detect(chosen_model, image, classes, conf)
-                    elif task == "segment":
-                        result_img, _ = predict_and_segment(chosen_model, image, classes, conf)
+                    if package == "ultralytics":
+                        if task == "detect":
+                            result_img, _ = predict_and_detect(chosen_model, image, classes, conf)
+                        elif task == "segment":
+                            result_img, _ = predict_and_segment(chosen_model, image, classes, conf)
+
+                    elif package == "super_gradients":
+
+                        chosen_model.predict(image, conf=conf).save("images")
+                        result_img = cv2.imread(os.path.join("images", os.listdir("images")[0]))
+
                     writer.write(result_img)
 
                 cap.release()
@@ -137,7 +154,7 @@ def handle_video(chosen_model, classes, task, conf=0.5):
                 st.video(video_bytes)
 
 
-def handle_webcam(chosen_model, classes, task, conf=0.5):
+def handle_webcam(chosen_model, classes, task, package, conf=0.5):
     st.header("kommt noch Bruder")
 
 
@@ -153,28 +170,33 @@ def object_detection_page(model_path):
     task = "detect"
     model = None
     classes_ids = []
+    package = ""
 
     medium = st.sidebar.radio("Choose your medium", ["Image", "Video", "Webcam"])
     confidence = st.sidebar.slider("Confidence", 0.0, 1.0, 0.01)
     model_select = st.sidebar.radio("Choose your Model", ["YOLO", "YOLO-NAS"])
     if model_select == "YOLO":
+        package = "ultralytics"
         version = st.sidebar.selectbox("Choose your version",
                                        ["yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x"])
         model = YOLO(os.path.join(model_path, version + ".pt"))
         classes_ids = prepare_classes(model)
 
     elif model_select == "YOLO-NAS":
+        package = "super_gradients"
+        device = 'cuda' if cuda.is_available() else "cpu"
         version = st.sidebar.selectbox("Choose your version",
                                        ["yolo_nas_s", "yolo_nas_m", "yolo_nas_l"])
-        model = NAS(os.path.join(model_path, version + ".pt"))
-        classes_ids = prepare_classes(model)
+        model = models.get(f"{version}", pretrained_weights="coco")
+
+        model.to(device)
 
     if medium == "Image":
-        handle_image(model, classes_ids, task, confidence)
+        handle_image(model, classes_ids, task, package, confidence)
     elif medium == "Video":
-        handle_video(model, classes_ids, task, confidence)
+        handle_video(model, classes_ids, task, package, confidence)
     elif medium == "Webcam":
-        handle_webcam(model, classes_ids, task, confidence)
+        handle_webcam(model, classes_ids, task, package, confidence)
 
 
 def segmentation_page(model_path):
@@ -184,11 +206,13 @@ def segmentation_page(model_path):
     model = None
     classes_ids = []
     task = "segment"
+    package = ""
 
     medium = st.sidebar.radio("Choose your medium", ["Image", "Video", "Webcam"])
     confidence = st.sidebar.slider("Confidence", 0.0, 1.0, 0.01)
     model_select = st.sidebar.radio("Choose your Model", ["YOLO", "SAM"])
     if model_select == "YOLO":
+        package = "ultralytics"
         version = st.sidebar.selectbox("Choose your version",
                                        ["yolov8n-seg", "yolov8s-seg", "yolov8m-seg", "yolov8l-seg", "yolov8x-seg"])
 
@@ -196,17 +220,18 @@ def segmentation_page(model_path):
         classes_ids = prepare_classes(model)
 
     elif model_select == "SAM":
+        package = "ultralytics"
         version = st.sidebar.selectbox("Choose your version",
                                        ['sam_h', 'sam_l', 'sam_b', 'mobile_sam'])
         model = SAM(os.path.join(model_path, version + ".pt"))
         classes_ids = prepare_classes(model)
 
     if medium == "Image":
-        handle_image(model, classes_ids, task, confidence)
+        handle_image(model, classes_ids, task, package, confidence)
     elif medium == "Video":
-        handle_video(model, classes_ids, task, confidence)
+        handle_video(model, classes_ids, task, package, confidence)
     elif medium == "Webcam":
-        handle_webcam(model, classes_ids, task, confidence)
+        handle_webcam(model, classes_ids, task, package, confidence)
 
 
 def main():
