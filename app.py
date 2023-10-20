@@ -69,7 +69,7 @@ def handle_image(chosen_model, classes, task, package, conf=0.5):
 
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        new_img = image.convert('RGB')
+        new_img = np.array(image.convert('RGB'))
         with input_image:
             st.subheader("Your input Image")
             st.image(image, use_column_width=True)
@@ -155,10 +155,55 @@ def handle_video(chosen_model, classes, task, package, conf=0.5):
 
 
 def handle_webcam(chosen_model, classes, task, package, conf=0.5):
-    st.header("kommt noch Bruder")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        start = st.button("Start")
+    with col2:
+        stop = st.button("Stop")
+
+    camera = cv2.VideoCapture(0)
+
+    input_webcam, output_webcam = st.columns(2)
+
+    with input_webcam:
+        st.subheader("Input of Webcam")
+        FRAME_WINDOW_INPUT = st.image([])
+
+    with output_webcam:
+        st.subheader("Output of Webcam")
+        FRAME_WINDOW_OUTPUT = st.image([])
+
+    while start:
+        _, frame = camera.read()
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        with input_webcam:
+
+            FRAME_WINDOW_INPUT.image(frame)
+
+        with output_webcam:
+
+            if package == "ultralytics":
+                if task == "detect":
+                    result_img, _ = predict_and_detect(chosen_model, frame, classes, conf)
+                elif task == "segment":
+                    result_img, _ = predict_and_segment(chosen_model, frame, classes, conf)
+                FRAME_WINDOW_OUTPUT.image(result_img)
+
+            elif package == "super_gradients":
+
+                chosen_model.predict(frame, conf=conf).save("webcam")
+                result_img = cv2.imread(os.path.join("webcam", os.listdir("webcam")[0]))
+                FRAME_WINDOW_OUTPUT.image(result_img)
+
+        if stop:
+            break
 
 
 def main_page(model_path):
+    _ = model_path
     st.title("KOmmt noch")
     st.write("Some text is here")
 
