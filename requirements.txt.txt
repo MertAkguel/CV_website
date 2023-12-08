@@ -1,0 +1,8 @@
+opencv-python
+matplotlib
+stqdm
+streamlit
+ultralytics
+numpy
+super-gradients
+torch
