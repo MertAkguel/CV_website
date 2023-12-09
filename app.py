@@ -52,12 +52,15 @@ def predict_and_segment(chosen_model, img, classes, conf=0.5):
     results = predict(chosen_model, img, classes, conf=conf)
     colors = [random.choices(range(256), k=3) for _ in classes]
 
-    for result in results:
-        for mask, box in zip(result.masks.xy, result.boxes):
-            points = np.int32([mask])
-            # cv2.polylines(img, points, True, (255, 0, 0), 1)
-            color_number = classes.index(int(box.cls[0]))
-            cv2.fillPoly(img, points, colors[color_number])
+    try:
+        for result in results:
+            for mask, box in zip(result.masks.xy, result.boxes):
+                points = np.int32([mask])
+                # cv2.polylines(img, points, True, (255, 0, 0), 1)
+                color_number = classes.index(int(box.cls[0]))
+                cv2.fillPoly(img, points, colors[color_number])
+    except Exception as e:
+        print(e)
 
     return img, results
 
@@ -70,6 +73,7 @@ def handle_image(chosen_model, classes, task, package, conf=0.5):
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         new_img = np.array(image.convert('RGB'))
+
         with input_image:
             st.subheader("Your input Image")
             st.image(image, use_column_width=True)
@@ -79,18 +83,30 @@ def handle_image(chosen_model, classes, task, package, conf=0.5):
 
             if package == "ultralytics":
                 if task == "detect":
+
                     result_img, _ = predict_and_detect(chosen_model, new_img, classes, conf)
                 elif task == "segment":
                     result_img, _ = predict_and_segment(chosen_model, new_img, classes, conf)
+
                 st.image(result_img, use_column_width=True)
+                result_img = cv2.cvtColor(result_img, cv2.COLOR_RGB2BGR)
+                cv2.imwrite("images/result_img.png", result_img)
 
             elif package == "super_gradients":
 
                 chosen_model.predict(new_img, conf=conf).save("images")
                 result_img = cv2.imread(os.path.join("images", os.listdir("images")[0]))
+                result_img = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
                 st.image(result_img, use_column_width=True)
 
-        # st.download_button("Download output", new_img)
+        with open("images/result_img.png", "rb") as file:
+
+            st.download_button(
+                label="Download Image",
+                data=file,
+                file_name='result_img.png',
+                mime='image/png',
+            )
 
 
 def handle_video(chosen_model, classes, task, package, conf=0.5):
@@ -153,6 +169,15 @@ def handle_video(chosen_model, classes, task, package, conf=0.5):
                 video_bytes = video_file.read()
                 st.video(video_bytes)
 
+        with open("videos/result.mp4", "rb") as file:
+
+            st.download_button(
+                label="Download Video",
+                data=file,
+                file_name='result.mp4',
+                # mime='image/png',
+            )
+
 
 def handle_webcam(chosen_model, classes, task, package, conf=0.5):
     col1, col2 = st.columns(2)
@@ -204,8 +229,73 @@ def handle_webcam(chosen_model, classes, task, package, conf=0.5):
 
 def main_page(model_path):
     _ = model_path
-    st.title("KOmmt noch")
-    st.write("Some text is here")
+    st.markdown("<h1 style='text-align: center; color: white; font-size:300%; text-decoration-line: underline;\
+          text-decoration-color: red;  '>Object Detection and Segmentation App</h1>", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    p, li {
+      font-size: 120%;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(
+        "<p font-size:150%> Welcome to our object detection and segmentation app! This app "
+        "allows you to perform "
+        "object detection and segmentation on images, videos, and webcam streams.</p>", unsafe_allow_html=True)
+
+    # Object detection and segmentation overview
+    st.header("Object Detection and Segmentation")
+    st.markdown(
+        "<p> Object detection is the task of identifying and locating objects in an image or "
+        "video. Object segmentation "
+        "is the task of identifying and outlining the boundaries of objects in an image or video. </p>",
+        unsafe_allow_html=True)
+
+    # Instructions for using the app
+    st.header("How to Use the App")
+    st.markdown(
+        "<p>To use the app, simply upload an image or video, or start your webcam stream. The app will automatically "
+        "detect and segment objects in the input data and display the results.</p>", unsafe_allow_html=True)
+
+    # List of app features
+    st.header("Features")
+    st.markdown("<p>The app offers the following features:</p>", unsafe_allow_html=True)
+    st.markdown("<ul >"
+                "<li style=font-size:120%> Object detection: Identify and locate objects in images, videos, "
+                "and webcam streams.</li>"
+                "<li style=font-size:120%>Support for multiple object classes: Detect and segment multiple object "
+                "classes simultaneously.</li> "
+                "<li style=font-size:120%>Visualize results: Display detected and segmented objects with bounding "
+                "boxes and outlines.</li> "
+                "</ul>", unsafe_allow_html=True)
+
+    # Advantages of using object detection and segmentation
+    st.header("Benefits")
+    st.markdown("<p>Object detection and segmentation offer several benefits, including:</p>", unsafe_allow_html=True)
+    st.markdown("<ul >"
+                "<li style=font-size:120%>Increased efficiency and accuracy in data analysis</li>"
+                "<li style=font-size:120%>Enhanced decision-making capabilities</li>"
+                "<li style=font-size:120%>Improved automation of tasks boxes and outlines.</li> "
+                "</ul>", unsafe_allow_html=True)
+
+    # Real-world applications of object detection and segmentation
+    st.header("Applications")
+    st.markdown("<p>Object detection and segmentation have a wide range of applications, including:</p>",
+                unsafe_allow_html=True)
+
+    st.markdown("<ul >"
+                "<li style=font-size:120%>Self-driving cars: Identify and track pedestrians, vehicles, and other "
+                "objects in the road environment.</li> "
+                "<li style=font-size:120%>Robotics: Enable robots to perceive and interact with their "
+                "surroundings.</li> "
+                "<li style=font-size:120%>Medical imaging: Identify and analyze medical images, such as X-rays and "
+                "MRIs.</li> "
+                "<li style=font-size:120%>Satellite imagery analysis: Analyze satellite imagery to identify objects "
+                "such as buildings, roads, and vegetation.</li> "
+                "<li style=font-size:120%> Security surveillance: Identify and track people and objects in security "
+                "footag</li> "
+                "</ul>", unsafe_allow_html=True)
 
 
 def object_detection_page(model_path):
@@ -238,8 +328,10 @@ def object_detection_page(model_path):
 
     if medium == "Image":
         handle_image(model, classes_ids, task, package, confidence)
+
     elif medium == "Video":
         handle_video(model, classes_ids, task, package, confidence)
+
     elif medium == "Webcam":
         handle_webcam(model, classes_ids, task, package, confidence)
 
@@ -288,6 +380,7 @@ def main():
         initial_sidebar_state="expanded",  # Expanding sidebar by default
 
     )
+
     model_path = r"C:\Users\Kleve\PycharmProjects\ComputerVision2\Resources"
     page_names_to_funcs = {
         "Main Page": main_page,
