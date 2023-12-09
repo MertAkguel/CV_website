@@ -43,7 +43,7 @@ To utilize the animal detection model, follow these steps:
 
 ## Demo
 
-!["Image of the streamlit website"](uploaded_data/image/Demo.png)
+!["Image of the streamlit website"](uploaded_data/Demo.png)
  
 
    
