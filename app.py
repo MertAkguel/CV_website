@@ -66,6 +66,7 @@ def predict_and_segment(chosen_model, img, classes, conf=0.5):
 
 
 def handle_image(chosen_model, classes, task, package, conf=0.5):
+    os.makedirs("images", exist_ok=True)
     uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg"])
 
     input_image, output_image = st.columns(2)
@@ -110,6 +111,7 @@ def handle_image(chosen_model, classes, task, package, conf=0.5):
 
 
 def handle_video(chosen_model, classes, task, package, conf=0.5):
+    os.makedirs("videos", exist_ok=True)
     uploaded_file = st.file_uploader("Choose a video...", type=["mp4", "avi"])
 
     input_video, output_video = st.columns(2)
@@ -180,6 +182,7 @@ def handle_video(chosen_model, classes, task, package, conf=0.5):
 
 
 def handle_webcam(chosen_model, classes, task, package, conf=0.5):
+    os.makedirs("webcam", exist_ok=True)
     col1, col2 = st.columns(2)
 
     with col1:
