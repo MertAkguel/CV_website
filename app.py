@@ -1,14 +1,15 @@
 import streamlit as st
 import random
-import numpy as np
-import cv2
 import os
+import cv2
+import numpy as np
 from ultralytics import YOLO, SAM
 from PIL import Image
 from stqdm import stqdm
 from torch import cuda
-from help_functions import create_video_writer
+from help_functions import create_video_writer, get_iou
 from super_gradients.training import models
+from BlurFace import *
 
 
 def prepare_classes(model):
@@ -149,7 +150,6 @@ def handle_video(chosen_model, classes, task, package, conf=0.5):
                     success, image = cap.read()
 
                     if not success:
-                        print("success")
                         break
 
                     if package == "ultralytics":
@@ -228,6 +228,304 @@ def handle_webcam(chosen_model, classes, task, package, conf=0.5):
 
         if stop:
             break
+
+
+def detect_faces(img, detector, confidence=0.5):
+    (h, w) = img.shape[:2]
+    blob = cv2.dnn.blobFromImage(cv2.resize(img, (300, 300)), 1.0,
+                                 (300, 300), (104.0, 177.0, 123.0))
+    detector.setInput(blob)
+    detections = detector.forward()
+    bbox = []
+
+    # loop over the detections
+    for i in range(0, detections.shape[2]):
+        # extract the confidence (i.e., probability) associated with the
+        # prediction
+        conf = detections[0, 0, i, 2]
+        # filter out weak detections by ensuring the `confidence` is
+        # greater than the minimum confidence
+        if conf > confidence:
+            # compute the (x, y)-coordinates of the bounding box for the
+            # object
+            box = (detections[0, 0, i, 3:7] * np.array([w, h, w, h])).astype(np.int)
+            bbox.append(box)
+
+    return bbox
+
+
+def blur_image(model, blurred_image, prototxt, caffemodel, confidence=0.5):
+    global x_face_recog, y_face_recog, w_face_recog, h_face_recog
+    os.makedirs("images", exist_ok=True)
+    detector = cv2.dnn.readNetFromCaffe(prototxt, caffemodel)
+
+    if blurred_image == "All":
+
+        uploaded_verifiing_image = st.file_uploader("Choose your input image...", type=["png", "jpg"], key=2)
+        input_image, output_image = st.columns(2)
+
+        if uploaded_verifiing_image is not None:
+            # verifiing_image = Image.open(uploaded_verifiing_image)
+            # verifiing_image = np.asarray(verifiing_image.convert('RGB'))
+            verifiing_image = Image.open(uploaded_verifiing_image)
+            verifiing_image = np.asarray(verifiing_image, dtype=np.uint8)
+            # st.write(f"{verifiing_image.shape = }")
+            output_img = np.copy(verifiing_image)
+            output_img = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
+
+            bbox = detect_faces(output_img, detector, confidence)
+            if bbox is not None:
+
+                for box in bbox:
+                    imgBlurPart = cv2.GaussianBlur(output_img[box[1]:box[3],
+                                                   box[0]:box[2]],
+                                                   (49, 49), 0)
+                    output_img[box[1]:box[3],
+                    box[0]:box[2]] = imgBlurPart
+
+            with input_image:
+                st.subheader("Your input Image")
+                st.image(verifiing_image, use_column_width=True)
+
+            with output_image:
+                st.subheader("Your output Image")
+                output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2RGB)
+                st.image(output_img, use_column_width=True)
+
+    else:
+
+        source_image, input_image = st.columns(2)
+        with source_image:
+            uploaded_source_images = st.file_uploader("Choose your face you want to blur...", type=["png", "jpg"],
+                                                      key=1,
+                                                      accept_multiple_files=True)
+
+        with input_image:
+            uploaded_verifiing_image = st.file_uploader("Choose your input image...", type=["png", "jpg"], key=2)
+
+        source_image, input_image, output_image = st.columns(3)
+
+        if len(uploaded_source_images) > 0 and uploaded_verifiing_image is not None:
+
+            source_imgs = [Image.open(uploaded_source_image) for uploaded_source_image in uploaded_source_images]
+            source_imgs = [cv2.cvtColor(np.array(source_img), cv2.COLOR_RGB2BGR) for source_img in source_imgs]
+
+            verifiing_image = Image.open(uploaded_verifiing_image)
+            verifiing_image = np.array(verifiing_image)
+
+            output_img = np.copy(verifiing_image)
+            output_img = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
+
+            if blurred_image == "Source Image":
+
+                for source_img in source_imgs:
+                    bbox = getBBoxFromVerifiedFace(source_img, output_img, model)
+                    if bbox:
+                        imgBlurPart = cv2.GaussianBlur(output_img[bbox[1]:bbox[3],
+                                                       bbox[0]:bbox[2]],
+                                                       (49, 49), 0)
+                        # cv2.rectangle(output_img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 255, 0), 2)
+                        output_img[bbox[1]:bbox[3],
+                        bbox[0]:bbox[2]] = imgBlurPart
+
+            elif blurred_image == "Everyone Else":
+                for source_img in source_imgs:
+
+                    bbox_source = getBBoxFromVerifiedFace(source_img, output_img, model)
+                    bbox = detect_faces(output_img, detector, confidence)
+
+                    if bbox_source is not None and bbox is not None:
+
+                        for box in bbox:
+
+                            iou = get_iou(box, bbox_source)
+
+                            if iou > 0.5:
+                                continue
+
+                            imgBlurPart = cv2.GaussianBlur(output_img[box[1]:box[3],
+                                                           box[0]:box[2]],
+                                                           (49, 49), 0)
+                            output_img[box[1]:box[3],
+                            box[0]:box[2]] = imgBlurPart
+
+            with source_image:
+                st.subheader("Your source Image")
+                source_imgs = [cv2.cvtColor(np.array(source_img), cv2.COLOR_BGR2RGB) for source_img in source_imgs]
+                st.image(source_imgs, use_column_width=True)
+
+            with input_image:
+                st.subheader("Your input Image")
+                st.image(verifiing_image, use_column_width=True)
+
+            with output_image:
+                st.subheader("Your output Image")
+                output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2RGB)
+                st.image(output_img, use_column_width=True)
+
+
+def blur_video(model, blurred_image, prototxt, caffemodel, confidence=0.5):
+    global x_face_recog, y_face_recog, w_face_recog, h_face_recog, path
+    os.makedirs("videos", exist_ok=True)
+    detector = cv2.dnn.readNetFromCaffe(prototxt, caffemodel)
+
+    if blurred_image == "All":
+
+        uploaded_verifiing_video = st.file_uploader("Choose a video...", type=["mp4", "avi"])
+
+        input_video, output_video = st.columns(2)
+
+        if uploaded_verifiing_video is not None:
+
+            path = os.path.join("videos", uploaded_verifiing_video.name)
+            # vid_file = False
+            try:
+                with open(path, "wb") as f:
+                    f.write(uploaded_verifiing_video.getbuffer())
+                    vid_file = True
+            except PermissionError:
+                vid_file = True
+                pass
+
+            with input_video:
+                st.subheader("Your input Video")
+                st.video(uploaded_verifiing_video)
+
+            if vid_file:
+                with output_video:
+                    st.subheader("Your output Video")
+
+                    cap = cv2.VideoCapture(path)
+
+                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+                    output_path = os.path.join("videos", "result.mp4")
+
+                    writer = create_video_writer(cap, output_path)
+
+                    for _ in stqdm(range(total_frames), colour="green"):
+
+                        success, image = cap.read()
+                        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+                        if not success:
+                            break
+
+                        bbox = detect_faces(image, detector, confidence)
+                        if bbox is not None:
+
+                            for box in bbox:
+                                imgBlurPart = cv2.GaussianBlur(image[box[1]:box[3],
+                                                               box[0]:box[2]],
+                                                               (99, 99), 0)
+                                image[box[1]:box[3],
+                                box[0]:box[2]] = imgBlurPart
+
+                        writer.write(image)
+
+                    cap.release()
+                    writer.release()
+                    video_file = open(output_path, 'rb')
+                    video_bytes = video_file.read()
+                    st.video(video_bytes)
+
+    else:
+
+        source_image, input_video = st.columns(2)
+        with source_image:
+            uploaded_source_images = st.file_uploader("Choose your face you want to blur...", type=["png", "jpg"],
+                                                      key=1,
+                                                      accept_multiple_files=True)
+
+        with input_video:
+            uploaded_verifiing_video = st.file_uploader("Choose a video...", type=["mp4", "avi"])
+
+        source_image, input_video, output_video = st.columns(3)
+
+        if len(uploaded_source_images) > 0 and uploaded_verifiing_video is not None:
+
+            source_imgs = [Image.open(uploaded_source_image) for uploaded_source_image in uploaded_source_images]
+            source_imgs = [cv2.cvtColor(np.array(source_img), cv2.COLOR_RGB2BGR) for source_img in source_imgs]
+
+            if uploaded_verifiing_video is not None:
+
+                with source_image:
+                    st.subheader("Your source Image")
+                    source_imgs = [cv2.cvtColor(np.array(source_img), cv2.COLOR_BGR2RGB) for source_img in source_imgs]
+                    st.image(source_imgs, use_column_width=True)
+
+                path = os.path.join("videos", uploaded_verifiing_video.name)
+                # vid_file = False
+                try:
+                    with open(path, "wb") as f:
+                        f.write(uploaded_verifiing_video.getbuffer())
+                        vid_file = True
+                except PermissionError:
+                    vid_file = True
+                    pass
+
+                with input_video:
+                    st.subheader("Your input Video")
+                    st.video(uploaded_verifiing_video)
+
+            if vid_file:
+                with output_video:
+                    st.subheader("Your output Video")
+                    cap = cv2.VideoCapture(path)
+
+                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+                    output_path = os.path.join("videos", "result.mp4")
+
+                    writer = create_video_writer(cap, output_path)
+
+                    for _ in stqdm(range(total_frames), colour="green"):
+
+                        success, image = cap.read()
+                        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+                        if not success:
+                            break
+
+                        if blurred_image == "Source Image":
+
+                            for source_img in source_imgs:
+                                bbox = getBBoxFromVerifiedFace(source_img, image, model)
+                                if bbox:
+                                    imgBlurPart = cv2.GaussianBlur(image[bbox[1]:bbox[3],
+                                                                   bbox[0]:bbox[2]],
+                                                                   (49, 49), 0)
+                                    image[bbox[1]:bbox[3],
+                                    bbox[0]:bbox[2]] = imgBlurPart
+
+                        elif blurred_image == "Everyone Else":
+                            for source_img in source_imgs:
+
+                                bbox_source = getBBoxFromVerifiedFace(source_img, image, model)
+                                bbox = detect_faces(image, detector, confidence)
+
+                                if bbox_source is not None and bbox is not None:
+
+                                    for box in bbox:
+
+                                        iou = get_iou(box, bbox_source)
+
+                                        if iou > 0.5:
+                                            continue
+
+                                        imgBlurPart = cv2.GaussianBlur(image[box[1]:box[3],
+                                                                       box[0]:box[2]],
+                                                                       (49, 49), 0)
+                                        image[box[1]:box[3],
+                                        box[0]:box[2]] = imgBlurPart
+
+                        writer.write(image)
+
+                    cap.release()
+                    writer.release()
+                    video_file = open(output_path, 'rb')
+                    video_bytes = video_file.read()
+                    st.video(video_bytes)
 
 
 def main_page(model_path):
@@ -374,6 +672,32 @@ def segmentation_page(model_path):
         handle_webcam(model, classes_ids, task, package, confidence)
 
 
+def blur_faces_page(model_path):
+    st.markdown("<h1 style='text-align: center; color: white; font-size:400%; text-decoration-line: underline;\
+              text-decoration-color: red;  '>Blur Faces</h1>", unsafe_allow_html=True)
+
+    medium = st.sidebar.radio("Choose your medium", ["Image", "Video", "Webcam"])
+
+    models = ["VGG-Face", "Facenet", "Facenet512", "OpenFace",
+              "DeepFace", "DeepID", "ArcFace", "Dlib", "SFace"
+              ]
+    model = st.sidebar.radio("Choose your Model", models, index=6)
+    blurred_face = st.sidebar.radio("Choose who should be blurred", ["All", "Source Image", "Everyone Else"])
+
+    prototxt = "deploy.prototxt.txt"
+    caffemodel = "res10_300x300_ssd_iter_140000.caffemodel"
+    confidence = st.sidebar.slider("Confidence", 0.0, 1.0, step=0.01,
+                                   value=0.5)
+
+    if medium == "Image":
+        blur_image(model, blurred_face, prototxt, caffemodel, confidence)
+    elif medium == "Video":
+        blur_video(model, blurred_face, prototxt, caffemodel, confidence)
+    elif medium == "Webcam":
+        st.write("still under construction")
+        # face_recog_image()
+
+
 def main():
     # Setting page layout
     st.set_page_config(
@@ -389,6 +713,7 @@ def main():
         "Main Page": main_page,
         "Object Detection": object_detection_page,
         "Segmentation": segmentation_page,
+        "Blur Faces": blur_faces_page
     }
 
     selected_page = st.sidebar.selectbox("Select a page", page_names_to_funcs.keys())
