@@ -1,8 +1,8 @@
-opencv-python
+deepface~=0.0.93
+opencv-python~=4.11.0.86
 matplotlib
-stqdm
-streamlit
-ultralytics
-numpy
-super-gradients
-torch
+stqdm~=0.0.5
+streamlit~=1.44.0
+ultralytics~=8.3.99
+numpy~=2.1.1
+pillow~=11.1.0
