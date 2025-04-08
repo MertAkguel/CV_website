@@ -1,4 +1,4 @@
-# my_app/pages/main_page.py
+# my_app/streamlit_pages/main_page.py
 
 import streamlit as st
 

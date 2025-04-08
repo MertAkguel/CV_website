@@ -1,10 +1,10 @@
 # my_app/main.py
 
 import streamlit as st
-from pages.main_page import main_page
-from pages.object_detection_page import object_detection_page
-from pages.segmentation_page import segmentation_page
-from pages.blur_faces_page import blur_faces_page
+from streamlit_pages.main_page import main_page
+from streamlit_pages.object_detection_page import object_detection_page
+from streamlit_pages.segmentation_page import segmentation_page
+from streamlit_pages.blur_faces_page import blur_faces_page
 
 def main():
     st.set_page_config(

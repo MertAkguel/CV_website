@@ -1,4 +1,4 @@
-# my_app/pages/blur_faces_page.py
+# my_app/streamlit_pages/blur_faces_page.py
 
 import streamlit as st
 
