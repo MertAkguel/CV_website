@@ -1,5 +1,5 @@
 deepface~=0.0.93
-opencv-python~=4.11.0.86
+opencv-python-headles
 matplotlib
 stqdm~=0.0.5
 streamlit~=1.44.0
