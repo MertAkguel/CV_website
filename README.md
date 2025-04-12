@@ -13,6 +13,7 @@ On this website, created by streamlit, you can upload your image or video and th
 - [Installation](#installation)
 - [Usage](#usage)
 - [Demo](#demo)
+- [Author information](#author)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -45,5 +46,12 @@ To utilize the animal detection model, follow these steps:
 
 !["Image of the streamlit website"](uploaded_data/Demo.png)
  
+4. Information about the author
+
+## Author
+
+**[Mert Akgül]** – *Computer Vision & AI Enthusiast*  
+[Portfolio](https://medium.com/@Mert.A/list/projects-6f9bb92a3c21) | [Blog](https://medium.com/@Mert.A) | [LinkedIn](https://www.linkedin.com/in/mert-akgül)
+
 
    
